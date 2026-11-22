@@ -3,15 +3,28 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Harborlight — an open-world crime story</title>
+<title>Harborlight — an open-world crime game</title>
 <style>
-  html, body { margin: 0; padding: 0; background: #0b1520; height: 100%; overflow: hidden; }
-  body { display: flex; align-items: center; justify-content: center; }
-  canvas { width: min(100vw, 177.78vh); height: min(100vh, 56.25vw); display: block; background: #0b1520; cursor: crosshair; }
+  html, body { margin: 0; padding: 0; background: #10141f; height: 100%; overflow: hidden; }
+  #game { display: block; width: 100vw; height: 100vh; cursor: crosshair; }
 </style>
 </head>
 <body>
-<canvas id="game" width="1280" height="720"></canvas>
-<script type="module" src="./main.js"></script>
+<canvas id="game"></canvas>
+<script src="src/config.js"></script>
+<script src="src/rng.js"></script>
+<script src="src/input.js"></script>
+<script src="src/audio.js"></script>
+<script src="src/city.js"></script>
+<script src="src/vehicles.js"></script>
+<script src="src/people.js"></script>
+<script src="src/police.js"></script>
+<script src="src/combat.js"></script>
+<script src="src/missions.js"></script>
+<script src="src/particles.js"></script>
+<script src="src/hud.js"></script>
+<script src="src/minimap.js"></script>
+<script src="src/game.js"></script>
+<script src="main.js"></script>
 </body>
 </html>

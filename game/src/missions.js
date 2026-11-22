@@ -1,141 +1,156 @@
-// The story: five jobs for fixer Marta Solis, played in order from her
-// garage. Each job is a small state machine of steps with a world marker,
-// an objective line, and a cash reward. Finishing all five completes the
-// story; jobs can be replayed from the garage afterwards.
-export const JOBS = [
+// Harborlight — 5 story jobs for Marta Solis. Linear chain; each pays out.
+const MISSIONS = [
   {
-    id: 1, name: 'First Wheels', reward: 400,
-    brief: "Marta: A coupe is parked at the docks, keys in it. Bring it to my garage and we are in business.",
-    steps: [
-      { id: 'go', text: 'Go to the docks and steal the coupe', at: { x: 1120, y: 2720 }, radius: 90 },
-      { id: 'drive', text: "Drive the coupe to Marta's Garage", at: { x: 480, y: 2720 }, radius: 90 },
-    ],
+    id: 1, name: 'The Coupe', brief: 'Marta: "Steal the red coupe from the Downtown garage. Bring it to my spot in Old Town."',
+    start: { x: 1600, y: 1600 }, target: { x: 1560, y: 1560, r: 60, label: 'Garage — steal the coupe' },
+    payout: 500,
   },
   {
-    id: 2, name: 'The Handoff', reward: 700,
-    brief: 'Marta: Pick up the package at Palm Beach, deliver it to Riverside Market. Keep your head down — the heat counts double on this one.',
-    steps: [
-      { id: 'pickup', text: 'Pick up the package at Palm Beach', at: { x: 2720, y: 2720 }, radius: 80 },
-      { id: 'deliver', text: 'Deliver the package to Riverside Market', at: { x: 2240, y: 1120 }, radius: 80 },
-    ],
+    id: 2, name: 'The Handoff', brief: 'Marta: "Package in the trunk. Drive it to the Docks drop — fast, no cops."',
+    start: null, target: { x: 400, y: 2900, r: 70, label: 'Docks drop-off' },
+    payout: 800, timer: 120,
   },
   {
-    id: 3, name: 'Shake the Tail', reward: 900,
-    brief: 'Marta: The PD is on you. Lose them and get to the safehouse in Riverside. You have ninety seconds.',
-    steps: [
-      { id: 'escape', text: 'Reach the safehouse with the law off your tail', at: { x: 2560, y: 800 }, radius: 90, timer: 90 },
-    ],
+    id: 3, name: 'Shake the Tail', brief: 'Marta: "HPD is on you — 3 stars. Lose them for 90 seconds and you are clear."',
+    start: null, target: null, payout: 1200, timer: 90, forceWanted: 3,
   },
   {
-    id: 4, name: 'Redline Trouble', reward: 1200,
-    brief: 'Marta: The Redline crew is muscling in. Wreck three of their cars — ram them or shoot them, your call.',
-    steps: [
-      { id: 'wreck', text: 'Wreck 3 Redline cars (0/3)', at: null, radius: 0, count: 3 },
-    ],
+    id: 4, name: 'Redline Wreckers', brief: 'Marta: "Redline gang is moving on my turf. Wreck 3 of their cars — ram them or shoot them."',
+    start: null, target: null, payout: 1500, wrecks: 3,
   },
   {
-    id: 5, name: 'The Harborlight Job', reward: 3000,
-    brief: 'Marta: The big one. Hit Harborlight Trust, grab the cash, and get to the boat at Pier 9. The whole city will be looking for you.',
-    steps: [
-      { id: 'rob', text: 'Hold up Harborlight Trust — stand in the bank', at: { x: 1600, y: 1440 }, radius: 110, hold: 5 },
-      { id: 'boat', text: 'Escape to the boat at Pier 9', at: { x: 1600, y: 2920 }, radius: 90 },
-    ],
+    id: 5, name: 'The Big One', brief: 'Marta: "Bank job. Grab the cash in Downtown, then run for the boat at Palm Beach marina."',
+    start: null, target: { x: 1600, y: 1400, r: 70, label: 'Harborlight Bank — grab the cash' },
+    payout: 3000,
   },
 ];
-
-export class Story {
-  constructor() {
-    this.done = 0;            // jobs completed in order
-    this.active = null;       // { job, step, progress, holdT, timer }
-    this.briefing = null;     // job awaiting accept
-    this.complete = false;
+function startMission(state, idx) {
+  const m = MISSIONS[idx];
+  state.mission = idx;
+  state.missionStarted = true;
+  state.missionStage = 0;
+  state.missionTimer = m.timer || 0;
+  state.missionCarWrecks = 0;
+  state.missionHold = 0;
+  state.objective = m.name + ': ' + m.brief;
+  state.toast('JOB ' + m.id + ' — ' + m.name, '#ffd060');
+  if (m.forceWanted) state.wanted = m.forceWanted;
+  if (idx === 0) {
+    // The red coupe waits in the Downtown garage.
+    const coupe = makeCar(0, 1560, 1560, 0);
+    coupe.parked = true;
+    state.parked.push(coupe);
+    state.missionCoupe = coupe;
   }
-
-  offerNext() {
-    if (this.done >= JOBS.length) { this.complete = true; return null; }
-    this.briefing = JOBS[this.done];
-    return this.briefing;
-  }
-
-  accept() {
-    if (!this.briefing) return null;
-    this.active = { job: this.briefing, step: 0, holdT: 0, timer: this.briefing.steps[0].timer || 0, count: 0 };
-    const j = this.briefing;
-    this.briefing = null;
-    return j;
-  }
-
-  decline() { this.briefing = null; }
-
-  step() { return this.active ? this.active.job.steps[this.active.step] : null; }
-
-  objectiveText() {
-    if (this.briefing) return `New job: ${this.briefing.name} — press E to take it`;
-    if (!this.active) return this.complete ? 'Story complete — free roam. Visit the garage to replay a job.' : 'Go to Marta\'s Garage for work';
-    const s = this.step();
-    if (!s) return '';
-    let t = s.text;
-    if (s.count) t = t.replace('0/3', `${this.active.count}/3`);
-    if (s.timer) t += ` — ${Math.max(0, Math.ceil(this.active.timer))}s`;
-    if (s.hold) t += ` — hold ${Math.max(0, (s.hold - this.active.holdT)).toFixed(0)}s`;
-    return `JOB ${this.active.job.id} — ${this.active.job.name}: ${t}`;
-  }
-
-  marker() {
-    if (!this.active) return null;
-    const s = this.step();
-    return s && s.at ? s.at : null;
-  }
-
-  // Advance the active job. ctx carries the player position, car, and events.
-  // Returns 'done' | 'failed' | null.
-  update(dt, ctx) {
-    if (!this.active) return null;
-    const a = this.active;
-    const s = a.job.steps[a.step];
-    if (s.timer) {
-      a.timer -= dt;
-      if (a.timer <= 0) { this.active = null; return 'failed'; }
+  if (idx === 3) {
+    // Redline cars cruise the Docks.
+    for (let i = 0; i < 3; i++) {
+      const c = makeCar(state.rng.int(0, 5), 500 + i * 300, 2700, 0);
+      c.gang = true; c.traffic = true; c.speed = 120;
+      state.traffic.push(c);
     }
-    const reach = (at, radius) => at && Math.hypot(ctx.x - at.x, ctx.y - at.y) < radius;
-    if (s.id === 'go') {
-      if (ctx.inCar && ctx.carIsJobCar) { a.step = 1; return null; }
-    } else if (s.id === 'drive') {
-      if (ctx.inCar && ctx.carIsJobCar && reach(s.at, s.radius)) { return this.finish(); }
-    } else if (s.id === 'pickup') {
-      if (!ctx.inCar && reach(s.at, s.radius)) { a.step = 1; return null; }
-    } else if (s.id === 'deliver') {
-      if (reach(s.at, s.radius)) { return this.finish(); }
-    } else if (s.id === 'escape') {
-      if (ctx.wanted === 0 && reach(s.at, s.radius)) { return this.finish(); }
-    } else if (s.id === 'wreck') {
-      if (ctx.wrecked >= a.count + 1) {
-        a.count += 1;
-        if (a.count >= s.count) return this.finish();
+    spawnGang(state, 800, 2700, 3);
+  }
+  if (idx === 4) {
+    state.missionHold = 0;
+  }
+}
+function updateMissions(state, dt) {
+  if (state.mission < 0 || state.mission >= MISSIONS.length) return;
+  const m = MISSIONS[state.mission];
+  // The timer only runs once the job is actually started (T pressed).
+  // Otherwise the next job's timer would count down from 0 and fail instantly.
+  if (m.timer && state.missionStarted) {
+    state.missionTimer -= dt;
+    if (state.missionTimer <= 0) {
+      if (state.mission === 2) {
+        // Survived the tail.
+        completeMission(state);
+        return;
       }
-    } else if (s.id === 'rob') {
-      if (reach(s.at, s.radius)) {
-        a.holdT += dt;
-        if (a.holdT >= s.hold) { a.step = 1; return null; }
-      } else a.holdT = 0;
-    } else if (s.id === 'boat') {
-      if (reach(s.at, s.radius)) { return this.finish(); }
+      failMission(state, 'Too slow — the window closed.');
+      return;
     }
-    return null;
   }
-
-  finish() {
-    const reward = this.active.job.reward;
-    this.done += 1;
-    this.active = null;
-    if (this.done >= JOBS.length) this.complete = true;
-    return { done: true, reward };
+  const p = state.player;
+  const px = state.playerCar ? state.playerCar.x : p.x;
+  const py = state.playerCar ? state.playerCar.y : p.y;
+  if (state.mission === 0) {
+    if (state.missionStage === 0) {
+      // Reach the garage, then steal the coupe.
+      if (state.missionCoupe && state.playerCar === state.missionCoupe) {
+        state.missionStage = 1;
+        state.objective = 'The Coupe: drive it to Marta in Old Town.';
+        state.toast('Got the coupe. Now get it to Marta.', '#80d0ff');
+      }
+    } else if (dist2(px, py, 2600, 500) < 90 * 90) {
+      completeMission(state);
+    }
   }
-
-  replay(jobId) {
-    const job = JOBS.find((j) => j.id === jobId);
-    if (!job) return null;
-    this.briefing = job;
-    return job;
+  if (state.mission === 1) {
+    if (m.target && dist2(px, py, m.target.x, m.target.y) < m.target.r * m.target.r) {
+      completeMission(state);
+    }
   }
+  if (state.mission === 3) {
+    if ((state.missionCarWrecks || 0) >= 3) completeMission(state);
+  }
+  if (state.mission === 4) {
+    if (state.missionStage === 0) {
+      if (m.target && dist2(px, py, m.target.x, m.target.y) < m.target.r * m.target.r) {
+        state.missionStage = 1;
+        state.missionHold = 5;
+        state.objective = 'The Big One: stay in the bank — grabbing the cash…';
+        state.toast('Grabbing the cash — hold on!', '#ffd060');
+      }
+    } else if (state.missionStage === 1) {
+      state.missionHold -= dt;
+      if (state.missionHold <= 0) {
+        state.missionStage = 2;
+        state.cash += 1500;
+        state.wanted = 4;
+        state.objective = 'The Big One: 4 stars! Escape to the boat at Palm Beach marina.';
+        state.toast('Cash grabbed — $1,500! Run for the boat!', '#ffd060');
+        AudioSys.cash();
+      }
+    } else if (dist2(px, py, 3050, 1900) < 90 * 90) {
+      completeMission(state);
+    }
+  }
+  // Mission target marker.
+  state.missionTarget = null;
+  if (state.mission === 0 && state.missionStage === 0) state.missionTarget = { x: 1560, y: 1560, label: 'Garage' };
+  if (state.mission === 0 && state.missionStage === 1) state.missionTarget = { x: 2600, y: 500, label: "Marta's spot" };
+  if (state.mission === 1) state.missionTarget = { x: 400, y: 2900, label: 'Docks drop' };
+  if (state.mission === 4 && state.missionStage === 0) state.missionTarget = { x: 1600, y: 1400, label: 'Bank' };
+  if (state.mission === 4 && state.missionStage === 2) state.missionTarget = { x: 3050, y: 1900, label: 'Escape boat' };
+}
+function completeMission(state) {
+  const m = MISSIONS[state.mission];
+  state.cash += m.payout;
+  state.toast('JOB DONE — ' + m.name + ' +$' + m.payout, '#40d040');
+  AudioSys.cash();
+  state.mission++;
+  state.missionStage = 0;
+  state.missionTarget = null;
+  if (state.mission >= MISSIONS.length) {
+    state.objective = 'All jobs done — Harborlight is yours. Free roam, or start a new story.';
+    state.toast('STORY COMPLETE — you run Harborlight now.', '#ffd060');
+    state.storyDone = true;
+  } else {
+    const next = MISSIONS[state.mission];
+    state.objective = 'Next job: ' + next.name + ' — talk to Marta (press T to start).';
+    state.missionStarted = false;
+  }
+  saveGame(state);
+}
+function failMission(state, why) {
+  state.toast('JOB FAILED — ' + why, '#ff6060');
+  state.failedMission = state.mission;
+  state.mission = -1;
+  state.missionTarget = null;
+  state.objective = 'Job failed. Press T to try the story again from the last job.';
+}
+function currentMissionTarget(state) {
+  return state.missionTarget || null;
 }

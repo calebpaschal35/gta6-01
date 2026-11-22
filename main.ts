@@ -1,42 +1,53 @@
-// Harborlight hand-in (Node 22, standard library only): copy this repo's
-// game/ and screenshots/ into the grader's output directory and write the
-// dossier the judge reads, using the kit's vendored dossier library.
-// The output directory is a mounted volume in the grader, so this program
-// only ever creates it and clears its *contents* child by child — it never
-// removes the directory itself.
-import { cpSync, existsSync, mkdirSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
-import { join } from 'node:path';
+// Harborlight — entrypoint for make.fun gta6-01.
+// Copies game/ and screenshots/ from this repository to the output directory
+// and writes /output/dossier.json with buildDossier from vendor/makefun-game.ts.
+// The output directory is a mount in the grader: it is created with mkdirSync
+// only and never removed; its previous contents are cleared child by child.
+import { mkdirSync, readdirSync, statSync, copyFileSync, rmSync, writeFileSync, existsSync } from 'node:fs';
+import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { buildDossier } from './vendor/makefun-game.ts';
 
-const repoRoot = fileURLToPath(new URL('.', import.meta.url));
-const outDir = process.env.MAKEFUN_OUTPUT_DIR ?? '/output';
+const REPO = dirname(fileURLToPath(import.meta.url));
+const OUT = process.env.MAKEFUN_OUTPUT_DIR || '/output';
 
-function sweepContents(dir) {
+function clearChildren(dir: string): void {
   if (!existsSync(dir)) return;
   for (const name of readdirSync(dir)) {
-    rmSync(join(dir, name), { recursive: true, force: true });
+    const p = join(dir, name);
+    rmSync(p, { recursive: true, force: true });
   }
 }
 
-mkdirSync(outDir, { recursive: true });
-sweepContents(outDir);
-cpSync(join(repoRoot, 'game'), join(outDir, 'game'), { recursive: true });
-mkdirSync(join(outDir, 'screenshots'), { recursive: true });
-if (existsSync(join(repoRoot, 'screenshots'))) {
-  cpSync(join(repoRoot, 'screenshots'), join(outDir, 'screenshots'), { recursive: true });
+function copyTree(src: string, dest: string): void {
+  mkdirSync(dest, { recursive: true });
+  for (const name of readdirSync(src)) {
+    const s = join(src, name);
+    const d = join(dest, name);
+    const st = statSync(s);
+    if (st.isDirectory()) copyTree(s, d);
+    else if (st.isFile()) copyFileSync(s, d);
+  }
 }
 
-// The gate's caps, from the kit's reference: at most 4 screenshots of at
-// most 256 KiB, at most 993 files and 48 MiB under game/, and a dossier
-// text capped at 160 KiB.
-writeFileSync(
-  join(outDir, 'dossier.json'),
-  buildDossier(outDir, {
+function main(): void {
+  // Create the output directory if missing; never remove it.
+  mkdirSync(OUT, { recursive: true });
+  // Clear only the directory's children, never the directory itself.
+  clearChildren(OUT);
+  copyTree(join(REPO, 'game'), join(OUT, 'game'));
+  const shots = join(REPO, 'screenshots');
+  if (existsSync(shots)) copyTree(shots, join(OUT, 'screenshots'));
+  const dossier = buildDossier(OUT, {
     text_max_bytes: 163840,
-    screenshots: { max: 4, max_bytes: 262144 },
+    screenshots: { max: 4, max_bytes: 256 * 1024 },
     game_max_files: 993,
-    game_max_bytes: 50331648,
+    game_max_bytes: 48 * 1024 * 1024,
     game_path_max_bytes: 1000,
-  }),
-);
+  });
+  writeFileSync(join(OUT, 'dossier.json'), dossier);
+  const gameFiles = readdirSync(join(OUT, 'game')).length;
+  console.log('Harborlight: wrote ' + gameFiles + ' top-level game entries and dossier.json (' + dossier.length + ' bytes) to ' + OUT);
+}
+
+main();
