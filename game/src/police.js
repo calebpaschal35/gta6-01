@@ -1,113 +1,65 @@
-// Harborlight — wanted level + Harborlight PD pursuit.
-function addWanted(state, n, reason) {
-  state.wanted = clamp(state.wanted + n, 0, 5);
-  state.lastSeen = 0;
-  if (n > 0) state.toast('Wanted level ' + state.wanted + ' — ' + reason, '#ff6060');
-}
-function updateWanted(state, dt) {
-  // Police can see the player when close or when the player is in a car chase.
-  let seen = false;
-  for (const cop of state.police) {
-    const d = dist2(cop.x, cop.y, state.player.x, state.player.y);
-    if (d < 520 * 520) { seen = true; break; }
+// Harborlight PD: spawn, chase, ram, shoot, busted. Spawn far out; ram is gentle.
+import { POLICE_MODEL, WANTED, WORLD } from './config.js';
+import { Vehicle } from './vehicles.js';
+import { dist, clamp, angleDiff } from './rng.js';
+
+export class Police {
+  constructor() { this.cars = []; this.shootCd = 0; }
+  wantedCount(wanted) { return WANTED.maxPolice[Math.min(5, Math.max(0, wanted))] || 0; }
+  update(dt, world) {
+    const { player, city, rng } = world;
+    const want = this.wantedCount(player.wanted);
+    // spawn further out so police never appear on top of the player
+    while (this.cars.length < want) {
+      const a = rng.range(0, Math.PI * 2);
+      const r = rng.range(900, 1250);
+      let x = player.x + Math.cos(a) * r, y = player.y + Math.sin(a) * r;
+      x = clamp(x, 60, WORLD - 60); y = clamp(y, 60, WORLD - 60);
+      const p = city.randomRoadPoint(rng);
+      const car = new Vehicle(POLICE_MODEL, p.x, p.y, 0);
+      car.isPolice = true;
+      this.cars.push(car);
+    }
+    while (this.cars.length > want) this.cars.pop();
+    this.shootCd -= dt;
+    for (const car of this.cars) {
+      if (car.dead) continue;
+      const tx = player.inCar ? player.car.x : player.x;
+      const ty = player.inCar ? player.car.y : player.y;
+      const d = dist(car.x, car.y, tx, ty);
+      const wantAngle = Math.atan2(ty - car.y, tx - car.x);
+      const diff = angleDiff(car.angle, wantAngle);
+      const steer = clamp(diff * 2, -1, 1);
+      const targetSpeed = Math.min(POLICE_MODEL.top * 0.96, player.inCar ? player.car.model.top * 0.94 + 40 : 420);
+      car.speed += (targetSpeed - car.speed) * Math.min(1, dt * 0.9);
+      car.angle += steer * POLICE_MODEL.turn * dt * clamp(Math.abs(car.speed) / 160, 0.3, 1);
+      const dx = Math.cos(car.angle) * car.speed * dt;
+      const dy = Math.sin(car.angle) * car.speed * dt;
+      const ox = car.x, oy = car.y;
+      city.resolveMove(car, dx, dy);
+      if (car.x === ox && car.y === oy) car.angle += Math.PI * 0.5;
+      // ram: gentle, 25 HP/s, only when really touching
+      if (player.inCar && d < 62) {
+        player.car.hp -= WANTED.ramDamage * dt;
+        if (player.car.hp <= 0) world.wreckPlayerCar();
+      }
+      // shoot at 3+ stars when close enough
+      if (player.wanted >= 3 && this.shootCd <= 0 && d < 380) {
+        this.shootCd = 0.8 + Math.random() * 0.7;
+        world.fireBullet(car.x, car.y, wantAngle + (Math.random() - 0.5) * 0.3, 5, 'police');
+      }
+    }
+    // siren while any police active
+    world.audio.setSiren(this.cars.length > 0 && player.wanted > 0);
   }
-  if (state.wanted > 0) {
-    if (seen) state.lastSeen = 0; else state.lastSeen += dt;
-    if (state.lastSeen > CFG.WANTED_DECAY) {
-      state.wanted -= 1;
-      state.lastSeen = 0;
-      state.toast(state.wanted === 0 ? 'You lost them. Clean.' : 'Wanted level ' + state.wanted, '#ffd060');
+  nearestDist(player) {
+    let best = 1e9;
+    for (const car of this.cars) {
+      const tx = player.inCar ? player.car.x : player.x;
+      const ty = player.inCar ? player.car.y : player.y;
+      best = Math.min(best, dist(car.x, car.y, tx, ty));
     }
+    return best;
   }
-  // Spawn police to match the wanted level.
-  const want = state.wanted === 0 ? 0 : Math.min(CFG.COP_MAX, 1 + state.wanted);
-  while (state.police.length < want) {
-    const a = state.rng.range(0, Math.PI * 2);
-    const car = makeCar(6, state.player.x + Math.cos(a) * 700, state.player.y + Math.sin(a) * 700, a);
-    car.police = true;
-    car.speed = 200;
-    state.police.push(car);
-  }
-  // Update police cars: chase, ram, shoot at 3+ stars.
-  for (const cop of state.police) {
-    const px = state.playerCar ? state.playerCar.x : state.player.x;
-    const py = state.playerCar ? state.playerCar.y : state.player.y;
-    const d = dist2(cop.x, cop.y, px, py);
-    const target = angleTo(cop.x, cop.y, px, py);
-    cop.angle += angleDiff(cop.angle, target) * Math.min(1, dt * 2.2);
-    const wantSpeed = state.wanted >= 3 ? 330 : 270;
-    cop.speed = lerp(cop.speed, d > 60 * 60 ? wantSpeed : wantSpeed * 0.4, Math.min(1, dt * 1.5));
-    cop.x += Math.cos(cop.angle) * cop.speed * dt;
-    cop.y += Math.sin(cop.angle) * cop.speed * dt;
-    if (collideBuildings(state.city, cop.x, cop.y, 14)) {
-      cop.x -= Math.cos(cop.angle) * cop.speed * dt * 2;
-      cop.y -= Math.sin(cop.angle) * cop.speed * dt * 2;
-      cop.angle += Math.PI / 2;
-    }
-    // Ram the player's car (steady damage, survivable for a few seconds).
-    if (state.playerCar && d < 55 * 55) {
-      state.playerCar.hp -= 25 * dt;
-      state.playerCar.speed *= 0.98;
-      if (state.playerCar.hp <= 0) wreckPlayerCar(state);
-    }
-    // On foot: busted if a cop touches the player at wanted >= 2.
-    // A short grace period right after the car is wrecked, so the player
-    // gets a chance to run instead of being busted on the spot.
-    if (state.bustedGrace > 0) state.bustedGrace -= dt;
-    if (!state.playerCar && d < 30 * 30 && state.wanted >= 2 && state.bustedGrace <= 0) {
-      busted(state);
-    }
-    // Shoot at 3+ stars.
-    cop.shootCd = (cop.shootCd || 1) - dt;
-    if (state.wanted >= 3 && cop.shootCd <= 0 && d < 430 * 430) {
-      cop.shootCd = 0.9 + state.rng.range(0, 0.6);
-      state.bullets.push({
-        x: cop.x + Math.cos(cop.angle) * 16, y: cop.y + Math.sin(cop.angle) * 16,
-        vx: Math.cos(cop.angle + state.rng.range(-0.1, 0.1)) * 540,
-        vy: Math.sin(cop.angle + state.rng.range(-0.1, 0.1)) * 540,
-        life: 1.2, fromPlayer: false, dmg: 6,
-      });
-      AudioSys.shot();
-    }
-    if (cop.hp <= 0 && !cop.wrecked) { cop.wrecked = true; cop.smoke = 1; state.cash += 50; }
-  }
-  // Remove wrecked / far police; wanted drops when all are gone.
-  state.police = state.police.filter((c) => !c.wrecked && dist2(c.x, c.y, state.player.x, state.player.y) < 1600 * 1600);
-  AudioSys.siren(state.wanted > 0 && state.police.length > 0);
-}
-function wreckPlayerCar(state) {
-  const car = state.playerCar;
-  if (!car) return;
-  car.wrecked = true; car.smoke = 1;
-  state.bustedGrace = 2.5;
-  AudioSys.explosion();
-  spawnParticles(state, car.x, car.y, 26, '#ff8020');
-  state.playerCar = null;
-  state.player.x = car.x + 40; state.player.y = car.y + 40;
-  state.player.hp -= 25;
-  state.toast('Your car is wrecked!', '#ff6060');
-  if (state.player.hp <= 0) wasted(state);
-}
-function busted(state) {
-  if (state.screen !== 'play') return;
-  state.screen = 'busted';
-  AudioSys.busted();
-  AudioSys.siren(false); AudioSys.engineStop();
-  state.cash = Math.max(0, state.cash - 200);
-}
-function wasted(state) {
-  if (state.screen !== 'play') return;
-  state.screen = 'wasted';
-  AudioSys.busted();
-  AudioSys.siren(false); AudioSys.engineStop();
-}
-function respawn(state) {
-  state.player.hp = CFG.PLAYER.hp;
-  state.player.x = 1600; state.player.y = 1600;
-  state.playerCar = null;
-  state.wanted = 0;
-  state.police = [];
-  state.bullets = [];
-  state.screen = 'play';
-  state.toast('Back on the streets of Harborlight.', '#80d0ff');
+  draw(ctx, cam) { for (const car of this.cars) car.draw(ctx, cam); }
 }

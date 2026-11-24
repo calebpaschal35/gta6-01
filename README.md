@@ -1,42 +1,52 @@
+[![make.fun bounty](https://make.fun/bounty/gta6-01/badge.svg)](https://make.fun/bounty/gta6-01)
+[![make.fun rank](https://make.fun/bounty/gta6-01/rank/calebpaschal35/gta6-01.svg)](https://make.fun/bounty/gta6-01)
+[![make.fun reward](https://make.fun/bounty/gta6-01/reward.svg)](https://make.fun/bounty/gta6-01)
+
 # Harborlight
 
-[![Make GTA 6](https://make.fun/badge/gta6-01.svg)](https://make.fun/bounty/gta6-01)
-[![Rank](https://make.fun/badge/gta6-01/calebpaschal35/gta6-01/rank.svg)](https://make.fun/bounty/gta6-01)
-[![Reward](https://make.fun/badge/gta6-01/calebpaschal35/gta6-01/reward.svg)](https://make.fun/bounty/gta6-01)
+An open-world crime game in the spirit of GTA 6, built from scratch for the
+make.fun "Make GTA 6" bounty. All original — nothing from Rockstar Games.
 
-An open-world crime game in the spirit of GTA 6, built for make.fun's
-**Make GTA 6** bounty ($1,666 in USDC). All original — nothing from Rockstar
-Games: its own city, characters, vehicles, story, art, and sound.
+You are Jesse Kane, a driver fresh out of the Harborlight scene, working jobs
+for fixer Marta Solis across five districts: Downtown, Riverside, The Docks,
+Old Town, and Palm Beach. Steal cars, lose the Harborlight PD, run five story
+jobs, and build your name — or get busted trying.
 
-## The game
+## What is in the game
 
-You are **Jesse Kane**, a driver fresh out of luck in the sun-soaked city of
-**Harborlight**. Five districts to explore on foot and by car — Downtown,
-Riverside, The Docks, Old Town, and Palm Beach — with traffic, pedestrians,
-cars to steal, a wanted level with Harborlight PD in pursuit, and five story
-jobs for the fixer **Marta Solis**: steal the coupe, run the handoff, shake a
-three-star tail, wreck the Redline gang's cars, and pull the bank heist with a
-boat escape.
-
-- 7 car models with arcade physics, traffic AI, parked cars to steal (E)
-- Wanted 0–5 stars: police chase, ram, and shoot at 3+ stars; busted/wasted
-- Combat: fists, pistol, buyable SMG ($800 at the gun shop); mouse aim
-- HUD with health, cash, stars, clock, objectives, and a circular minimap
-- Start screen (Story / Continue / Free Roam), pause, localStorage save
-- Synthesized WebAudio sound (engine, shots, sirens, chimes) — M to mute
+- A 3200x3200 open city with five districts, traffic AI, pedestrians, and
+  parked cars to steal (walk up, press E).
+- Seven car models with arcade handling, drift, and damage.
+- Wanted level 0–5 stars: HPD cruisers spawn, chase, ram, and shoot at 3+
+  stars. Lose them to let the heat decay.
+- Five story jobs for Marta: steal the Riverside Coupe, a cross-town handoff,
+  shake a 3-star tail for 90 seconds, wreck three Redline gang cars, and the
+  Harborlight bank job with a boat escape.
+- Combat on foot and from the car: fists, pistol (starting weapon), and a
+  buyable SMG ($800 at Old Town Guns). Mouse aim, click to fire.
+- HUD with health, cash, wanted stars, clock, objectives, weapon/ammo, and a
+  circular minimap. Start screen (Story / Continue / Free Roam), pause,
+  busted and wasted screens, and a localStorage save.
+- Synthesized WebAudio sound (engine, shots, sirens, pickups) — M to mute.
+  No audio files, no network requests at runtime.
 
 ## Run it
 
-Open `game/index.html` in desktop Chrome. No build step, no network requests —
-every file is under `game/` or a `data:` URI.
+Open `game/index.html` in a desktop browser (Chrome works best). No build
+step, no server needed — everything is plain files under `game/`.
 
-Controls: WASD move/drive · E steal or exit car · mouse aim, click to shoot ·
-1/2/3 weapons · R reload · T start the next job · B buy at the gun shop ·
-M mute · Esc pause.
+Controls: WASD move / drive · mouse aim · click fire · E enter or exit a car
+· Space handbrake · 1/2/3 weapons · R reload · J start the next job · Esc/P
+pause · M mute.
 
-## Entry
+## Hand in
 
-`main.ts` copies `game/` and `screenshots/` to the output directory and writes
-`dossier.json` via `buildDossier` from `vendor/makefun-game.ts`.
+`main.ts` copies `game/` and `screenshots/` to `/output` (or
+`MAKEFUN_OUTPUT_DIR`) and writes `/output/dossier.json` with the vendored
+make.fun library:
 
-Built by an AI agent for make.fun. https://make.fun/?ref=hrrz9v0m
+```
+mkdir -p out && MAKEFUN_OUTPUT_DIR=out node main.ts
+```
+
+Made with Muse for the make.fun bounty — https://make.fun/?ref=hrrz9v0m

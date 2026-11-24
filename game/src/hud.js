@@ -1,84 +1,88 @@
-// Harborlight — HUD: health, cash, wanted stars, clock, objective, weapon.
-function drawHUD(ctx, state, W, H) {
-  // Top-left: health bar + cash.
-  ctx.fillStyle = 'rgba(0,0,0,0.55)';
-  roundRect(ctx, 12, 12, 220, 58, 8); ctx.fill();
-  ctx.fillStyle = '#fff';
-  ctx.font = 'bold 15px sans-serif'; ctx.textAlign = 'left';
-  ctx.fillText('JESSE KANE', 22, 32);
-  ctx.fillStyle = '#222'; ctx.fillRect(22, 40, 160, 12);
-  ctx.fillStyle = state.player.hp > 30 ? '#40c040' : '#e04040';
-  ctx.fillRect(22, 40, 160 * Math.max(0, state.player.hp / 100), 12);
-  ctx.fillStyle = '#40d040';
-  ctx.font = 'bold 16px sans-serif';
-  ctx.fillText('$' + state.cash.toLocaleString(), 188, 32);
-  // Top-right: wanted stars + clock.
-  ctx.fillStyle = 'rgba(0,0,0,0.55)';
-  roundRect(ctx, W - 232, 12, 220, 58, 8); ctx.fill();
-  ctx.font = 'bold 22px sans-serif'; ctx.textAlign = 'center';
-  for (let i = 0; i < 5; i++) {
-    ctx.fillStyle = i < state.wanted ? '#ffd020' : 'rgba(255,255,255,0.25)';
-    ctx.fillText('★', W - 200 + i * 28, 38);
-  }
-  ctx.fillStyle = '#fff';
-  ctx.font = 'bold 15px sans-serif';
-  const hh = Math.floor(state.clock / 60) % 24, mm = Math.floor(state.clock % 60);
-  ctx.fillText(String(hh).padStart(2, '0') + ':' + String(mm).padStart(2, '0') + '  ' + districtAt(state.player.x, state.player.y).name, W - 122, 62);
-  // Top-center: objective.
-  if (state.objective) {
-    ctx.font = 'bold 15px sans-serif';
-    const w = ctx.measureText(state.objective).width + 28;
+// HUD: health, cash, wanted stars, clock, objective, weapon/ammo, timer, screens.
+import { WEAPONS } from './config.js';
+
+export class Hud {
+  draw(ctx, world, vw, vh) {
+    const p = world.player;
+    ctx.save();
+    // top-left: health + cash
     ctx.fillStyle = 'rgba(0,0,0,0.55)';
-    roundRect(ctx, (W - w) / 2, 12, w, 30, 8); ctx.fill();
-    ctx.fillStyle = '#ffd060';
-    ctx.fillText(state.objective, W / 2, 32);
+    ctx.fillRect(14, 12, 250, 64);
+    ctx.fillStyle = '#e8e8e8'; ctx.font = 'bold 15px sans-serif';
+    ctx.fillText(`Jesse Kane`, 24, 32);
+    ctx.fillStyle = '#333';
+    ctx.fillRect(24, 40, 200, 12);
+    ctx.fillStyle = p.hp > 50 ? '#7ee081' : p.hp > 25 ? '#e8c832' : '#e05a5a';
+    ctx.fillRect(24, 40, 200 * Math.max(0, p.hp / 100), 12);
+    ctx.fillStyle = '#7ee081'; ctx.font = 'bold 16px sans-serif';
+    ctx.fillText(`$${p.cash}`, 24, 70);
+    // top-right: wanted stars + clock
+    ctx.fillStyle = 'rgba(0,0,0,0.55)';
+    ctx.fillRect(vw - 214, 12, 200, 64);
+    ctx.font = 'bold 22px sans-serif';
+    for (let i = 0; i < 5; i++) {
+      ctx.fillStyle = i < p.wanted ? '#ffd23f' : 'rgba(255,255,255,0.25)';
+      ctx.fillText('★', vw - 200 + i * 30, 40);
+    }
+    const mins = Math.floor(world.clock) % (24 * 60);
+    const hh = String(Math.floor(mins / 60)).padStart(2, '0');
+    const mm = String(mins % 60).padStart(2, '0');
+    ctx.fillStyle = '#e8e8e8'; ctx.font = 'bold 16px sans-serif';
+    ctx.fillText(`${hh}:${mm}`, vw - 200, 68);
+    ctx.fillStyle = '#b0b0b0'; ctx.font = '13px sans-serif';
+    ctx.fillText(world.city.districtAt(p.x, p.y).name, vw - 120, 68);
+    // objective (bottom-left, right of the minimap so it stays readable)
+    ctx.fillStyle = 'rgba(0,0,0,0.55)';
+    const obj = world.objective;
+    if (obj) {
+      ctx.font = '14px sans-serif';
+      const w = Math.min(560, ctx.measureText(obj).width + 24);
+      ctx.fillRect(190, vh - 96, w, 30);
+      ctx.fillStyle = '#ffe9a8';
+      ctx.fillText(obj, 202, vh - 76);
+    }
+    // mission step (same column as the objective)
+    const step = world.missions.stepText();
+    if (step) {
+      ctx.fillStyle = 'rgba(0,0,0,0.55)';
+      ctx.fillRect(190, vh - 132, Math.min(560, ctx.measureText(step).width + 24), 30);
+      ctx.fillStyle = '#ffffff'; ctx.font = 'bold 14px sans-serif';
+      ctx.fillText('▸ ' + step, 202, vh - 112);
+    }
+    // timer — only while a job is running with a limit
+    const a = world.missions.active;
+    if (a && a.timeLeft != null && a.missionStarted) {
+      const t = Math.max(0, Math.ceil(a.timeLeft));
+      ctx.fillStyle = 'rgba(0,0,0,0.6)';
+      ctx.fillRect(vw / 2 - 60, 14, 120, 40);
+      ctx.fillStyle = t <= 15 ? '#ff6b6b' : '#ffffff';
+      ctx.font = 'bold 24px sans-serif'; ctx.textAlign = 'center';
+      ctx.fillText(`${Math.floor(t / 60)}:${String(t % 60).padStart(2, '0')}`, vw / 2, 44);
+      ctx.textAlign = 'left';
+    }
+    // weapon / ammo bottom-right
+    const w = WEAPONS[p.weapon];
+    ctx.fillStyle = 'rgba(0,0,0,0.55)';
+    ctx.fillRect(vw - 214, vh - 56, 200, 42);
+    ctx.fillStyle = '#e8e8e8'; ctx.font = 'bold 15px sans-serif';
+    const ammo = isFinite(w.mag) ? `${p.ammo}/${w.mag}` : '∞';
+    ctx.fillText(`${w.name}  ${ammo}`, vw - 200, vh - 30);
+    ctx.fillStyle = '#b0b0b0'; ctx.font = '12px sans-serif';
+    ctx.fillText('[1] Fists  [2] Pistol  [3] SMG', vw - 200, vh - 14);
+    ctx.restore();
   }
-  // Mission timer — only while the job is actually running.
-  if (state.missionStarted && state.mission >= 0 && MISSIONS[state.mission] && MISSIONS[state.mission].timer) {
-    const t = Math.max(0, state.missionTimer);
-    ctx.fillStyle = t < 15 ? '#ff6060' : '#fff';
-    ctx.font = 'bold 20px sans-serif';
-    ctx.fillText(Math.floor(t / 60) + ':' + String(Math.floor(t % 60)).padStart(2, '0'), W / 2, 66);
-  }
-  // Bottom-left: weapon + ammo.
-  const w = WEAPONS[state.weapon];
-  ctx.fillStyle = 'rgba(0,0,0,0.55)';
-  roundRect(ctx, 12, H - 56, 190, 44, 8); ctx.fill();
-  ctx.fillStyle = '#fff';
-  ctx.font = 'bold 15px sans-serif'; ctx.textAlign = 'left';
-  ctx.fillText(w.name + (state.weapon === 'fists' ? '' : '  •  ' + state.ammo + ' / ' + w.mag), 22, H - 28);
-  ctx.font = '12px sans-serif';
-  ctx.fillStyle = '#aaa';
-  ctx.fillText(state.ownedSmg ? '1 fists · 2 pistol · 3 smg · R reload' : '1 fists · 2 pistol · R reload', 22, H - 14);
-  // Gun shop hint.
-  if (state.nearShop) {
-    ctx.fillStyle = 'rgba(0,0,0,0.65)';
-    roundRect(ctx, W / 2 - 190, H - 110, 380, 34, 8); ctx.fill();
-    ctx.fillStyle = '#ffd060';
-    ctx.font = 'bold 15px sans-serif'; ctx.textAlign = 'center';
-    ctx.fillText(state.ownedSmg ? 'Gun shop — press B for ammo ($' + CFG.AMMO_PRICE + ')' : 'Gun shop — press B to buy SMG ($' + CFG.SMG_PRICE + ')', W / 2, H - 88);
-    ctx.textAlign = 'left';
-  }
-  // Toasts (stacked, fading).
-  let ty = 92;
-  for (const t of state.toasts) {
-    ctx.globalAlpha = Math.min(1, t.life / 1.2);
-    ctx.font = 'bold 15px sans-serif';
-    const tw = ctx.measureText(t.text).width + 24;
-    ctx.fillStyle = 'rgba(0,0,0,0.65)';
-    roundRect(ctx, (W - tw) / 2, ty, tw, 28, 8); ctx.fill();
-    ctx.fillStyle = t.color || '#fff';
+  drawCenter(ctx, vw, vh, lines, color) {
+    ctx.save();
+    ctx.fillStyle = 'rgba(0,0,0,0.6)';
+    ctx.fillRect(0, 0, vw, vh);
     ctx.textAlign = 'center';
-    ctx.fillText(t.text, W / 2, ty + 19);
-    ctx.textAlign = 'left';
-    ctx.globalAlpha = 1;
-    ty += 34;
-  }
-  // Controls hint (first minute).
-  if (state.time < 25 && state.screen === 'play') {
-    ctx.fillStyle = 'rgba(0,0,0,0.5)';
-    ctx.font = '13px sans-serif'; ctx.textAlign = 'center';
-    ctx.fillText('WASD move / drive · E steal car · Click shoot · T next job · M mute · Esc pause', W / 2, H - 70);
-    ctx.textAlign = 'left';
+    let y = vh / 2 - (lines.length - 1) * 26;
+    for (let i = 0; i < lines.length; i++) {
+      ctx.fillStyle = i === 0 ? (color || '#ffffff') : '#d8d8d8';
+      ctx.font = i === 0 ? 'bold 44px sans-serif' : '17px sans-serif';
+      ctx.fillText(lines[i], vw / 2, y);
+      y += i === 0 ? 56 : 30;
+    }
+    ctx.restore();
   }
 }
